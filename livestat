@@ -1,0 +1,67 @@
+#!/usr/bin/env ruby
+# -*- coding: UTF-8 -*-;
+
+# livestat
+#
+# A command line tool to display real-time statistics of the streaming data.
+#
+# Author: @nanki / nanki at dotswitch dot net
+# Web: http://github.com/nanki
+
+require 'rubygems' rescue nil
+require 'ncurses'
+require 'optparse'
+
+config = {}
+opts = OptionParser.new <<EOS
+Usage: #{$0} [options]
+
+  Displays live statistics of the streaming data.
+
+EOS
+
+opts.on("-v", "--sort-by-value", "Sort lines by value.") {|v| config[:sort_by_value] = true }
+opts.on("-n", "--numeric-sort", "Sort lines by its numerical value.") {|v| config[:number] = true }
+opts.on("-r", "--reverse", "Reverse the sorting result.") {|v| config[:reverse] = true }
+opts.on("-g", "--graph", "Display a histogram.") {|v| config[:graph] = true }
+opts.parse!(ARGV)                            
+
+def display(win, lines, config)
+  max = lines.values.max
+  width_v = max.to_s.length
+  width_k = lines.keys.map(&:length).max
+  width_g = (Ncurses.COLS - width_v - width_k) / 2 if config[:graph]
+
+  format = "%#{width_v}d : %s"
+  format += " | %s" if config[:graph] 
+
+  sorted = lines.sort_by{|k,v| config[:sort_by_value] ? k.send(config[:number] ? :to_i : :to_s) : v}
+  sorted.reverse! unless config[:reverse]
+
+  sorted[0, Ncurses.LINES].each_with_index do |(k, v), i|
+    win.move(i, 0)
+    values = [v, k.rstrip.ljust(width_k)]
+    if config[:graph] 
+      n = (v.quo(max) * width_g).to_i
+      values << '*' * n + ' ' * (Ncurses.COLS - n)
+    end
+    win.addstr(format % values)
+  end
+  win.refresh
+end
+
+begin
+  Ncurses.initscr
+  win = Ncurses.stdscr
+  win.refresh
+
+  lines = Hash.new{0}
+
+  ARGF.each do |line|
+    lines[line] += 1
+    display(win, lines, config) if rand < 0.1
+  end
+ensure
+  ARGF.close
+  Ncurses.endwin
+end
